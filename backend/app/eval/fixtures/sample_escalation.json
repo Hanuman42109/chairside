@@ -1,0 +1,22 @@
+{
+  "call_id": "fixture-escalation-001",
+  "transcript": [
+    {"role": "assistant", "content": "Thanks for calling Chairside Dental! How can I help you today?"},
+    {"role": "user", "content": "I knocked out my tooth playing basketball, it's bleeding a lot!"},
+    {"role": "assistant", "content": "I'm so sorry to hear that -- this sounds like a dental emergency, so I'm going to get a team member to call you back right away rather than schedule this myself."}
+  ],
+  "final_state": {
+    "intent": "escalation",
+    "escalation_reason": "Dental emergency: knocked-out tooth with bleeding.",
+    "escalated": true,
+    "call_outcome": "escalated",
+    "booking_confirmed": false
+  },
+  "expected": {
+    "intent": "escalation",
+    "required_slots": {},
+    "ground_truth_available_slots": null,
+    "escalation_expected": true,
+    "expected_outcome": "escalated"
+  }
+}

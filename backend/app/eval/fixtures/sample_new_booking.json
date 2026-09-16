@@ -1,0 +1,36 @@
+{
+  "call_id": "fixture-new-booking-001",
+  "transcript": [
+    {"role": "assistant", "content": "Thanks for calling Chairside Dental! How can I help you today?"},
+    {"role": "user", "content": "Hi, I'd like to book a cleaning."},
+    {"role": "assistant", "content": "Sure! Can I get your full name, and are you a new or existing patient?"},
+    {"role": "user", "content": "Jane Doe, I'm a new patient. My insurance is Delta Dental."},
+    {"role": "assistant", "content": "Great, and what day works best for your cleaning?"},
+    {"role": "user", "content": "Next Monday, September 22nd, in the afternoon if possible."},
+    {"role": "assistant", "content": "I have 2:00 PM on Monday, September 22nd available -- does that work?"},
+    {"role": "user", "content": "Yes, that works."},
+    {"role": "assistant", "content": "You're all set for 2:00 PM on September 22nd. You'll get a text confirmation shortly."}
+  ],
+  "final_state": {
+    "patient_first_name": "Jane",
+    "patient_last_name": "Doe",
+    "is_new_patient": true,
+    "insurance_provider": "Delta Dental",
+    "appointment_type": "cleaning",
+    "preferred_date": "2026-09-22",
+    "booking_confirmed": true,
+    "call_outcome": "booked",
+    "escalated": false
+  },
+  "expected": {
+    "intent": "new_booking",
+    "required_slots": {
+      "patient_first_name": "Jane",
+      "appointment_type": "cleaning",
+      "preferred_date": "2026-09-22"
+    },
+    "ground_truth_available_slots": ["2026-09-22T14:00:00-04:00"],
+    "escalation_expected": false,
+    "expected_outcome": "booked"
+  }
+}
