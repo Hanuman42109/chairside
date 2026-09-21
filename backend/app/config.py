@@ -34,8 +34,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
 
     # --- Retell AI ---
+    # Also doubles as the webhook-signature verification secret (see
+    # app/routes/webhook.py) -- Retell has no separate webhook secret; only an
+    # API key with the "webhook" badge in the dashboard can verify signatures.
     retell_api_key: str = ""
-    retell_webhook_secret: str = ""
 
     # --- Cal.com ---
     calcom_api_key: str = ""

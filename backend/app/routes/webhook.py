@@ -4,19 +4,23 @@ This is separate from the per-utterance Custom LLM websocket
 (app/routes/llm_websocket.py) -- these are one-shot HTTP events Retell fires
 for logging/analytics, not part of the live conversation loop.
 
-TODO: confirm the exact signature header/algorithm against current Retell
-docs before going live -- `verify_signature` below implements the common
-HMAC-SHA256-over-raw-body pattern, but has not been checked against a real
-Retell payload yet.
+Signature verification uses Retell's own `retell-sdk` (verified against
+https://docs.retellai.com/features/secure-webhook and the RetellAI/
+retell-python-sdk source): webhooks are signed HMAC-SHA256 over the raw body
+concatenated with a timestamp, using the Retell **API key** as the secret
+(not a separate webhook secret -- Retell doesn't issue one; only an API key
+with the "webhook" badge in the dashboard can verify), with a ~5 minute replay
+window built into the SDK's `verify()`. Hand-rolling this HMAC scheme would be
+easy to get subtly wrong (timestamp concatenation, replay window), so we defer
+to the SDK rather than reimplementing it.
 """
 
-import hashlib
-import hmac
 import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from retell.lib.webhook_auth import verify as retell_verify
 
 from app.config import get_settings
 from app.db import repository
@@ -27,15 +31,12 @@ router = APIRouter(prefix="/webhook/retell", tags=["retell-webhook"])
 
 def verify_signature(raw_body: bytes, signature_header: str | None) -> bool:
     settings = get_settings()
-    if not settings.retell_webhook_secret:
-        # No secret configured yet (local dev) -- accept everything.
+    if not settings.retell_api_key:
+        # No API key configured yet (local dev) -- accept everything.
         return True
     if not signature_header:
         return False
-    expected = hmac.new(
-        settings.retell_webhook_secret.encode("utf-8"), raw_body, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+    return retell_verify(raw_body.decode("utf-8"), settings.retell_api_key, signature_header)
 
 
 @router.post("/events")
