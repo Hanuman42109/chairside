@@ -43,6 +43,7 @@ from app.graph.state import BookingState
 
 INTERRUPT_AFTER_NODES = [
     "greeting",
+    "clarify_intent",
     "collect_patient_info",
     "collect_appointment_prefs",
     "confirm_slot",
@@ -62,6 +63,7 @@ def build_graph() -> StateGraph:
     for name, fn in [
         ("greeting", nodes.greeting),
         ("detect_intent", nodes.detect_intent),
+        ("clarify_intent", nodes.clarify_intent),
         ("collect_patient_info", nodes.collect_patient_info),
         ("collect_appointment_prefs", nodes.collect_appointment_prefs),
         ("check_availability", nodes.check_availability),
@@ -96,8 +98,14 @@ def build_graph() -> StateGraph:
             "collect_patient_info": "collect_patient_info",
             "lookup_existing_appointment": "lookup_existing_appointment",
             "faq_lookup": "faq_lookup",
+            "clarify_intent": "clarify_intent",
             "escalate": "escalate",
         },
+    )
+    graph.add_conditional_edges(
+        "clarify_intent",
+        edges.route_after_clarify_intent,
+        {"detect_intent": "detect_intent", "escalate": "escalate"},
     )
     graph.add_conditional_edges(
         "collect_patient_info",

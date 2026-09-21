@@ -69,7 +69,14 @@ def route_after_detect_intent(state: BookingState) -> str:
         "new_booking": "collect_patient_info",
         "reschedule": "lookup_existing_appointment",
         "faq": "faq_lookup",
+        "unclear": "clarify_intent",
     }.get(state.get("intent"), "escalate")
+
+
+def route_after_clarify_intent(state: BookingState) -> str:
+    if retry_count_for(state, "clarify_intent") >= MAX_RETRIES:
+        return "escalate"
+    return "detect_intent"
 
 
 def route_after_collect_patient_info(state: BookingState) -> str:

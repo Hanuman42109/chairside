@@ -14,6 +14,19 @@ def test_route_after_detect_intent_respects_escalation_reason():
     assert edges.route_after_detect_intent({"intent": "new_booking", "escalation_reason": "x"}) == "escalate"
 
 
+def test_route_after_detect_intent_sends_unclear_to_clarify_intent():
+    assert edges.route_after_detect_intent({"intent": "unclear"}) == "clarify_intent"
+
+
+def test_route_after_clarify_intent_loops_then_escalates():
+    state: dict = {}
+    assert edges.route_after_clarify_intent(state) == "detect_intent"
+
+    for _ in range(edges.MAX_RETRIES):
+        state.update(bump_retry(state, "clarify_intent"))
+    assert edges.route_after_clarify_intent(state) == "escalate"
+
+
 def test_route_after_collect_patient_info_loops_until_complete():
     incomplete = {"patient_first_name": "Jane"}  # insurance_provider missing
     assert edges.route_after_collect_patient_info(incomplete) == "collect_patient_info"

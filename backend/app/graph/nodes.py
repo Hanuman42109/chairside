@@ -72,11 +72,23 @@ async def detect_intent(state: BookingState) -> dict:
     messages = [SystemMessage(content=prompts.detect_intent_prompt())] + to_langchain_messages(state)
     response = await llm.ainvoke(messages)
     label = str(response.content).strip().lower()
-    intent = label if label in ("new_booking", "reschedule", "faq", "escalation") else "escalation"
+    valid_labels = ("new_booking", "reschedule", "faq", "escalation", "unclear")
+    # An unparseable/unexpected label is itself a sign the caller's intent wasn't
+    # clear -- ask a clarifying question (via clarify_intent) rather than jumping
+    # straight to escalation.
+    intent = label if label in valid_labels else "unclear"
     update: dict[str, Any] = {"intent": intent, "current_node": "detect_intent"}
     if intent == "escalation":
         update["escalation_reason"] = "Caller intent classified as needing escalation."
     return update
+
+
+async def clarify_intent(state: BookingState) -> dict:
+    """Caller's intent wasn't clear on the last pass -- ask once and let
+    detect_intent re-classify with their answer. Loops (via edges.py) up to
+    MAX_RETRIES before escalating, same pattern as the collect_* nodes."""
+    reply_update = await _converse(state, prompts.clarify_intent_prompt(), "clarify_intent")
+    return {**reply_update, **bump_retry(state, "clarify_intent")}
 
 
 # --- New booking ----------------------------------------------------------------

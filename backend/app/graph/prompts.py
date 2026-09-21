@@ -19,10 +19,20 @@ def greeting_prompt() -> str:
 def detect_intent_prompt() -> str:
     return (
         "Classify the caller's most recent message into exactly one intent: "
-        "'new_booking', 'reschedule', 'faq', or 'escalation'. "
-        "Use 'escalation' for anything urgent (severe pain, bleeding, knocked-out tooth), "
-        "billing disputes, complaints, or anything you are not confident the other "
-        "intents cover. Respond with only the intent label."
+        "'new_booking', 'reschedule', 'faq', 'escalation', or 'unclear'. "
+        "Use 'escalation' ONLY for things a human must handle: urgent dental issues "
+        "(severe pain, bleeding, knocked-out tooth), billing disputes, or complaints. "
+        "Use 'unclear' for small talk, greetings, or anything ambiguous where the "
+        "caller hasn't yet said what they need -- do NOT escalate just because you're "
+        "unsure; a human receptionist would simply ask a clarifying question instead. "
+        "Respond with only the intent label."
+    )
+
+
+def clarify_intent_prompt() -> str:
+    return (
+        "The caller's request wasn't clear. Warmly ask whether they'd like to book an "
+        "appointment, reschedule an existing one, or ask a question."
     )
 
 
