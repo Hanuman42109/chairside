@@ -78,6 +78,32 @@ async def list_calls(limit: int = 50, offset: int = 0) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def find_latest_booked_call(caller_phone: str, exclude_call_id: str | None = None) -> dict | None:
+    """Most recent call for this phone number that ended in a confirmed
+    booking, with its final graph_state -- used by lookup_existing_appointment
+    to find an existing appointment without a Cal.com round-trip."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        select c.id as call_id, s.graph_state
+        from calls c
+        join sessions s on s.call_id = c.id
+        where c.caller_phone = $1
+          and c.outcome = 'booked'
+          and ($2::uuid is null or c.id != $2)
+        order by c.started_at desc
+        limit 1
+        """,
+        caller_phone,
+        exclude_call_id,
+    )
+    if row is None:
+        return None
+    result = dict(row)
+    result["graph_state"] = json.loads(result["graph_state"]) if result["graph_state"] else {}
+    return result
+
+
 async def upsert_session_state(call_id: str, graph_state: dict, current_node: str) -> None:
     """Overwrite the single `sessions` row for this call with the latest
     LangGraph state -- called once per turn from the websocket handler."""

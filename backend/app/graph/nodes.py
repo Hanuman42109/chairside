@@ -193,18 +193,37 @@ async def send_confirmation_sms(state: BookingState) -> dict:
 
 
 async def lookup_existing_appointment(state: BookingState) -> dict:
-    """TODO: replace with a real lookup (HubSpot note / `calls` table by phone) once
-    call history is queryable -- for the scaffold we just ask the caller directly."""
+    """Look up the caller's most recent confirmed booking by phone number
+    (local `calls`/`sessions` history -- no Cal.com round-trip needed)."""
+    from app.db import repository  # local import: keeps this module's top-level imports tool/LLM-only
+
+    match = await repository.find_latest_booked_call(
+        state["caller_phone"], exclude_call_id=state.get("call_id")
+    )
+    if match is None or not match["graph_state"].get("booking_uid"):
+        return {
+            "escalation_reason": "No existing booking found on file for this phone number.",
+            "current_node": "lookup_existing_appointment",
+        }
+
+    found_state = match["graph_state"]
+    slot = found_state.get("selected_slot") or {}
     reply_update = await _converse(
         state,
-        "Ask the caller for their name and the date of their existing appointment so "
-        "you can locate it in the schedule.",
+        "Tell the caller you found their existing appointment and confirm it's the "
+        "one they mean before asking what new time they'd like.",
         "lookup_existing_appointment",
+        extra_context=(
+            f"Existing appointment on file: {found_state.get('appointment_type', 'appointment')} "
+            f"at {slot.get('start', 'an unknown time')}."
+        ),
     )
-    fields = await _extract_fields(
-        state, "Extract the existing appointment date/details if mentioned.", ["existing_booking_uid"]
-    )
-    return {**reply_update, **fields}
+    return {
+        **reply_update,
+        "existing_booking_uid": found_state["booking_uid"],
+        "appointment_type": found_state.get("appointment_type", ""),
+        "current_node": "lookup_existing_appointment",
+    }
 
 
 async def collect_new_time(state: BookingState) -> dict:
