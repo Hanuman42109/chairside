@@ -83,6 +83,7 @@ greeting → detect_intent
   ├─ reschedule:   lookup_existing_appointment → collect_new_time → check_availability
                    → confirm_reschedule → update_booking → send_confirmation_sms → closing
   ├─ faq:          faq_lookup → answer_faq → anything_else → (yes: detect_intent | no: closing)
+  ├─ unclear:      clarify_intent → detect_intent (re-classify with the caller's answer)
   └─ escalation:   escalate → closing
 ```
 
@@ -92,7 +93,11 @@ Every tool-calling node (`check_availability`, `book_appointment`,
 `route_or_escalate` helper, so failure handling is defined in exactly one
 place (`backend/app/graph/edges.py`). Slot-filling loops (asking again for
 missing info) are capped per-node at 3 retries before escalating, so a
-confused back-and-forth can't loop forever.
+confused back-and-forth can't loop forever. `detect_intent` itself only
+escalates for genuinely urgent/complaint content -- small talk or ambiguous
+input routes to `clarify_intent` instead (same 3-retry cap), so a caller
+who says "hi, how are you?" before stating their request doesn't get
+permanently escalated on the first ambiguous turn.
 
 ## Retell integration: two wiring options
 
@@ -202,26 +207,66 @@ npm run build
 npm run test
 ```
 
-The dashboard currently points at `GET /api/calls` and `GET /api/eval-scores`,
-which don't exist on the backend yet (see the `TODO` in
-`frontend/src/lib/api.ts`) — the pages render a clear "not wired up yet"
-state until those read endpoints are added.
+The dashboard reads live data from `GET /api/calls` and `GET /api/eval-scores`
+(`backend/app/routes/dashboard.py`) — start the backend before the frontend
+so those calls succeed.
+
+## Local demo (no Retell/Cal.com/HubSpot/Twilio accounts needed)
+
+With `TOOLS_MOCK_MODE=true` (the default — see `backend/.env.example`),
+`check_availability`/`book_slot`/`reschedule_booking`/`cancel_booking`
+(Cal.com), `upsert_contact` (HubSpot), and `send_sms` (Twilio) all return
+realistic fake data instead of calling those providers, so the full booking
+conversation can run end-to-end with only a Groq/Anthropic/OpenAI key and a
+Postgres `DATABASE_URL`.
+
+Talk to the agent directly from a terminal (no Retell account required):
+
+```bash
+cd backend
+python scripts/chat.py                    # or: python scripts/chat.py --phone +15551234567
+```
+
+This creates a real row in the `calls` table (so it shows up on the
+dashboard's Calls page like any other call) and drives the same LangGraph
+turn logic the Retell websocket uses (`backend/app/graph/runner.py`), reading
+your replies from stdin until the call reaches a terminal outcome or you type
+`quit`.
+
+To get a real `eval_scores` row on the dashboard's Eval Results page:
+
+1. Run `scripts/chat.py`, complete a booking, and note the printed `call_id`.
+2. Copy `backend/app/eval/fixtures/sample_new_booking.json` and set its
+   `"call_id"` to that UUID.
+3. `python -m app.eval.run_eval app/eval/fixtures/<your_copy>.json --write-db`
 
 ## What's real vs. stubbed right now
 
-- **Real and tested:** the FastAPI app, the full LangGraph state machine
-  (compiles and routes correctly — see `backend/tests/test_graph_edges.py`),
-  the eval scoring framework, the FAQ knowledge base (actually indexes and
-  retrieves from `backend/app/tools/faq_data/faq.md`), the DB schema/migration
-  runner, and the frontend shell (builds, lints, tests pass).
-- **Stubbed, needs real credentials:** Cal.com, HubSpot, Twilio, and your
-  chosen LLM provider — the integration code is written and typed against
-  each provider's real API shape, but untested against live accounts. Fill in
-  `backend/.env` and go one integration at a time.
-- **Needs your input before going live:** confirm the Retell webhook/Custom
-  LLM message shapes (flagged above), decide which of the two Retell wiring
-  options to use, and add the dashboard read endpoints if you want live data
-  in the frontend.
+- **Real and tested:** the FastAPI app, the dashboard read endpoints, the
+  full LangGraph state machine (compiles, routes, and resumes correctly
+  across turns — see `backend/tests/test_graph_edges.py`), tool-mock mode for
+  local demos, the eval scoring framework, the FAQ knowledge base (actually
+  indexes and retrieves from `backend/app/tools/faq_data/faq.md`), the DB
+  schema/migration runner, and the frontend shell (builds, lints, tests
+  pass).
+- **Verified against live accounts:** Cal.com (availability lookup, booking,
+  reschedule, cancel all confirmed against a real Cal.com account —
+  `check_availability` requires `CALCOM_EVENT_TYPE_ID` and a fixed
+  `cal-api-version` per endpoint, see `backend/app/tools/calcom.py`) and
+  HubSpot (contact create/update/dedupe-by-phone confirmed with standard
+  properties; the three custom properties -- `chairside_appointment_type`,
+  `chairside_insurance_provider`, `chairside_last_call_notes` -- must be
+  created under HubSpot Settings → Properties → Contact properties before
+  those fields will save, otherwise the contact create/update call fails).
+- **Written, not yet verified against a live account:** Twilio SMS sending —
+  the code follows the documented SDK usage but hasn't been run against a
+  real account yet.
+- **Verified against a live Retell agent:** the Custom LLM websocket
+  (`backend/app/routes/llm_websocket.py`) and webhook signature verification
+  (`backend/app/routes/webhook.py`) — both were fixed and confirmed against a
+  real Retell agent over an ngrok tunnel, not just documentation. See
+  [`docs/retell-integration-debugging-log.md`](docs/retell-integration-debugging-log.md)
+  for the full list of issues found and how each was fixed.
 
 ## Environment variables
 
@@ -229,3 +274,12 @@ See `backend/.env.example` and `frontend/.env.example` for the full list.
 Nothing needs to be filled in to run the test suites or the LangGraph graph
 construction/routing locally — only the actual tool calls (LLM, Cal.com,
 HubSpot, Twilio) need real keys.
+
+## Further reading
+
+- [`docs/retell-integration-debugging-log.md`](docs/retell-integration-debugging-log.md)
+  — a technical log of every bug found while verifying the local demo and the
+  live Retell integration against real traffic (LangGraph turn-resume bug,
+  Cal.com/HubSpot API mismatches, Retell websocket protocol gaps, an
+  intent-classification dead end, and a reconnect-handling bug), with root
+  cause, fix, and verification for each.
