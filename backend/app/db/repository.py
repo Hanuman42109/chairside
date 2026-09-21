@@ -36,6 +36,7 @@ async def update_call(
     ended_at: datetime | None = None,
     transcript: list[dict] | None = None,
     recording_url: str | None = None,
+    caller_phone: str | None = None,
 ) -> None:
     pool = await get_pool()
     values: list[Any] = []
@@ -46,6 +47,7 @@ async def update_call(
         ("outcome", outcome),
         ("ended_at", ended_at),
         ("recording_url", recording_url),
+        ("caller_phone", caller_phone),
     ):
         if value is not None:
             values.append(value)
