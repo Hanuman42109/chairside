@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db.client import close_pool
-from app.routes import functions, health, llm_websocket, webhook
+from app.routes import dashboard, functions, health, llm_websocket, webhook
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
@@ -32,3 +32,4 @@ app.include_router(health.router)
 app.include_router(webhook.router)
 app.include_router(functions.router)
 app.include_router(llm_websocket.router)
+app.include_router(dashboard.router)
