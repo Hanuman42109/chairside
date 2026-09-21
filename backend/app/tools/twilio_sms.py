@@ -7,11 +7,15 @@ event loop.
 """
 
 import asyncio
+import logging
 
 from twilio.rest import Client
 
 from app.config import get_settings
+from app.tools import mock_data
 from app.tools.schemas import SmsResult
+
+logger = logging.getLogger(__name__)
 
 
 class TwilioError(RuntimeError):
@@ -34,6 +38,9 @@ def _send_sync(to: str, body: str) -> SmsResult:
 
 async def send_sms(to: str, body: str) -> SmsResult:
     """Send an SMS. `to` must be E.164 (e.g. +15551234567)."""
+    if get_settings().tools_mock_mode:
+        logger.info("MOCK SMS to=%s body=%s", to, body)
+        return mock_data.fake_sms()
     return await asyncio.to_thread(_send_sync, to, body)
 
 

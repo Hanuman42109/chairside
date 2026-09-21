@@ -4,11 +4,19 @@ Docs: https://developers.hubspot.com/docs/api/crm/contacts
 Uses a private-app access token (free tier supports this). We search by
 phone number first so repeat callers update one contact instead of creating
 duplicates.
+
+Note: HubSpot's contact search index has a few seconds of propagation lag
+after a create -- two upserts for the same new phone number in quick
+succession (e.g. an automated test) can both miss the search and create two
+contacts. Real calls are naturally spaced out in time, so this shouldn't
+matter in practice, but it's not a bug in `_find_contact_by_phone` if you see
+it happen back-to-back.
 """
 
 import httpx
 
 from app.config import get_settings
+from app.tools import mock_data
 from app.tools.schemas import ContactResult
 
 
@@ -63,6 +71,9 @@ async def upsert_contact(
         ContactResult with the HubSpot contact id and whether it was newly created.
     """
     settings = get_settings()
+    if settings.tools_mock_mode:
+        return mock_data.fake_contact()
+
     properties = {
         "phone": phone,
         "firstname": first_name,

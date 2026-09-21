@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     database_url: str = ""
 
+    # --- Local demo ---
+    # When true, calcom/hubspot/twilio_sms tool calls return fake data instead
+    # of hitting real provider APIs -- lets the full booking conversation run
+    # end-to-end without those accounts. Flip to false once real keys are set.
+    tools_mock_mode: bool = True
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]

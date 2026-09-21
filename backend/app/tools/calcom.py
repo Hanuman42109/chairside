@@ -11,6 +11,7 @@ from datetime import date as date_type
 import httpx
 
 from app.config import get_settings
+from app.tools import mock_data
 from app.tools.schemas import BookingResult, TimeSlot
 
 
@@ -18,12 +19,19 @@ class CalComError(RuntimeError):
     """Raised when Cal.com returns a non-2xx response or unexpected payload."""
 
 
-def _headers() -> dict[str, str]:
+# Cal.com versions each v2 endpoint independently via this header -- slots
+# lookup and the booking endpoints are on different versions as of this
+# writing (see https://cal.com/docs/api-reference/v2/introduction).
+_SLOTS_API_VERSION = "2024-09-04"
+_BOOKINGS_API_VERSION = "2026-02-25"
+
+
+def _headers(api_version: str) -> dict[str, str]:
     settings = get_settings()
     return {
         "Authorization": f"Bearer {settings.calcom_api_key}",
         "Content-Type": "application/json",
-        "cal-api-version": "2024-08-13",
+        "cal-api-version": api_version,
     }
 
 
@@ -41,33 +49,32 @@ async def check_availability(
 
     Returns:
         List of TimeSlot, empty if nothing is open that day.
-
-    TODO: once real credentials are wired up, confirm the exact `/slots`
-    response shape against a live Cal.com account -- field names have shifted
-    between v1 and v2 of their API in the past.
     """
     settings = get_settings()
+    if settings.tools_mock_mode:
+        return mock_data.fake_slots(on_date)
+
     event_type_id = event_type_id or settings.calcom_event_type_id
     timezone = timezone or settings.office_timezone
 
     async with httpx.AsyncClient(base_url=settings.calcom_api_base_url, timeout=10.0) as client:
         response = await client.get(
             "/slots",
-            headers=_headers(),
+            headers=_headers(_SLOTS_API_VERSION),
             params={
                 "eventTypeId": event_type_id,
-                "startTime": f"{on_date.isoformat()}T00:00:00",
-                "endTime": f"{on_date.isoformat()}T23:59:59",
+                "start": f"{on_date.isoformat()}T00:00:00Z",
+                "end": f"{on_date.isoformat()}T23:59:59Z",
                 "timeZone": timezone,
+                "format": "range",
             },
         )
     if response.status_code != 200:
         raise CalComError(f"check_availability failed: {response.status_code} {response.text}")
 
     payload = response.json()
-    slots_by_day = payload.get("data", {}).get("slots", {})
-    day_slots = slots_by_day.get(on_date.isoformat(), [])
-    return [TimeSlot(start=s["time"], end=s.get("end", s["time"])) for s in day_slots]
+    day_slots = payload.get("data", {}).get(on_date.isoformat(), [])
+    return [TimeSlot(start=s["start"], end=s.get("end", s["start"])) for s in day_slots]
 
 
 async def book_slot(
@@ -85,14 +92,17 @@ async def book_slot(
     later for reschedule/cancel.
     """
     settings = get_settings()
+    if settings.tools_mock_mode:
+        return mock_data.fake_booking(slot_start)
+
     event_type_id = event_type_id or settings.calcom_event_type_id
 
     async with httpx.AsyncClient(base_url=settings.calcom_api_base_url, timeout=10.0) as client:
         response = await client.post(
             "/bookings",
-            headers=_headers(),
+            headers=_headers(_BOOKINGS_API_VERSION),
             json={
-                "eventTypeId": event_type_id,
+                "eventTypeId": int(event_type_id),
                 "start": slot_start,
                 "attendee": {
                     "name": attendee_name,
@@ -118,11 +128,13 @@ async def book_slot(
 async def reschedule_booking(booking_uid: str, new_slot_start: str) -> BookingResult:
     """Move an existing booking to a new start time."""
     settings = get_settings()
+    if settings.tools_mock_mode:
+        return mock_data.fake_booking(new_slot_start, status="rescheduled")
 
     async with httpx.AsyncClient(base_url=settings.calcom_api_base_url, timeout=10.0) as client:
         response = await client.post(
             f"/bookings/{booking_uid}/reschedule",
-            headers=_headers(),
+            headers=_headers(_BOOKINGS_API_VERSION),
             json={"start": new_slot_start},
         )
     if response.status_code not in (200, 201):
@@ -140,12 +152,14 @@ async def reschedule_booking(booking_uid: str, new_slot_start: str) -> BookingRe
 async def cancel_booking(booking_uid: str, reason: str | None = None) -> BookingResult:
     """Cancel an existing booking (used for the escalation/abandon path)."""
     settings = get_settings()
+    if settings.tools_mock_mode:
+        return BookingResult(booking_uid=booking_uid, start="", end="", status="cancelled")
 
     async with httpx.AsyncClient(base_url=settings.calcom_api_base_url, timeout=10.0) as client:
         response = await client.post(
             f"/bookings/{booking_uid}/cancel",
-            headers=_headers(),
-            json={"reason": reason or "Cancelled by Chairside voice agent"},
+            headers=_headers(_BOOKINGS_API_VERSION),
+            json={"cancellationReason": reason or "Cancelled by Chairside voice agent"},
         )
     if response.status_code not in (200, 201):
         raise CalComError(f"cancel_booking failed: {response.status_code} {response.text}")
